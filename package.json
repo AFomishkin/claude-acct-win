@@ -1,0 +1,14 @@
+{
+  "name": "claude-acct-win",
+  "version": "0.1.0",
+  "description": "Switch Claude Code between your own accounts from the status line — a Windows port of claude-acct on Node, without bash, jq or curl",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\"",
+    "install-local": "node install.js"
+  }
+}
