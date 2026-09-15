@@ -115,9 +115,10 @@ claude-acct doctor
   (`GET /api/oauth/usage`) with each account's own token, so the row shows real numbers for
   everyone. At most once every 5 minutes (the same interval Claude Code caches them for), plus on
   a switch and via the `↻ limits` link. No prompt is sent and no quota is consumed. Numbers
-  older than an hour show as `?`. Right after a switch the session keeps reporting the numbers of
-  the account you left for a while; claude-acct recognises those leftovers and never files them
-  under the new account.
+  older than an hour show as `?`. Right after a switch a session keeps reporting the numbers of
+  the last account it got a response from, which can be several switches back, until its next
+  response; claude-acct recognises those numbers by the reset times of that account's windows and
+  never files them under the new account.
 - **Error messages** appear as a third line of the status line, with a `✕ hide` link:
   there are no pop-up notifications in the terminal.
 

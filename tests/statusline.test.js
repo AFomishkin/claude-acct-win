@@ -170,3 +170,79 @@ test("with no saved accounts the row starts with the controls, with no indent", 
   const out = h.strip(draw("{}"));
   assert.match(out, /^⤡ collapse {2}＋ save {2}↻ limits$/);
 });
+
+// alice, bob, carol; bob active
+function threeAccounts() {
+  twoAccounts();
+  h.login("carol");
+  accounts.save();
+  accounts.use("bob@example.com");
+}
+
+// a session that has no 5h window
+function sevenDayOnly(pct, resets) {
+  return JSON.stringify({ rate_limits: { seven_day: { used_percentage: pct, resets_at: resets } } });
+}
+
+function idOf(email) {
+  return require("../src/vault").indexRead().accounts.find((a) => a.email === email).id;
+}
+
+test("leftovers of an account left several switches ago are recognised", (t) => {
+  const ctx = h.setup();
+  t.after(() => h.cleanup(ctx));
+  threeAccounts();
+  const now = Math.floor(Date.now() / 1000);
+  const carol = idOf("carol@example.com");
+  statusline.run(h.session(5, now + 6600, 44, now + 400000)); // bob's own numbers
+  accounts.use("alice@example.com");
+  statusline.run(h.session(5, now + 6600, 44, now + 400000)); // no response since: still bob's
+  accounts.use("carol@example.com");
+  statusline.run(h.session(5, now + 6600, 44, now + 400000)); // and still bob's
+  const entry = ratelimits.read().accounts[carol];
+  assert.equal(entry && entry.five_hour, undefined, `bob's numbers were filed under carol: ${JSON.stringify(entry)}`);
+});
+
+test("another session's older numbers are recognised by the window they share", (t) => {
+  const ctx = h.setup();
+  t.after(() => h.cleanup(ctx));
+  twoAccounts();
+  const now = Math.floor(Date.now() / 1000);
+  const r5 = now + 6600;
+  const r7 = now + 400000;
+  // two open sessions: one last heard from bob before his 5h window started, the
+  // other just now, and the other one's numbers are the last recorded
+  statusline.run(sevenDayOnly(42, r7));
+  statusline.run(h.session(5, r5, 44, r7));
+  accounts.use("alice@example.com");
+  statusline.run(sevenDayOnly(42, r7)); // the first session, still bob's
+  const entry = ratelimits.read().accounts[idOf("alice@example.com")];
+  assert.equal(entry && entry.seven_day, undefined, `bob's numbers were filed under alice: ${JSON.stringify(entry)}`);
+});
+
+test("a window that has reset since does not hide whose leftovers they are", (t) => {
+  const ctx = h.setup();
+  t.after(() => h.cleanup(ctx));
+  threeAccounts();
+  const now = Math.floor(Date.now() / 1000);
+  const carol = idOf("carol@example.com");
+  const bob = idOf("bob@example.com");
+  // a session last heard from bob while his previous 5h window was running ...
+  statusline.run(h.session(70, now - 600, 44, now + 400000));
+  // ... and the endpoint has seen his new one since
+  ratelimits.update((rl) => {
+    rl.accounts[bob] = {
+      ...(rl.accounts[bob] || {}),
+      five_hour: { used_percentage: 3, resets_at: now + 17400 },
+      fetchedAt: now,
+      source: "api",
+    };
+    return rl;
+  });
+  accounts.use("alice@example.com");
+  statusline.run(h.session(70, now - 600, 44, now + 400000)); // no response since: still bob's
+  accounts.use("carol@example.com");
+  statusline.run(h.session(70, now - 600, 44, now + 400000)); // and still bob's
+  const entry = ratelimits.read().accounts[carol];
+  assert.equal(entry && entry.seven_day, undefined, `bob's numbers were filed under carol: ${JSON.stringify(entry)}`);
+});

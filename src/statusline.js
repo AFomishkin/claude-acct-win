@@ -75,12 +75,20 @@ function limitsText(src, now) {
   return parts.length ? ` ${parts.join(" · ")}` : "";
 }
 
-// The same numbers a second apart: the session and the endpoint round them differently.
+// The same reset time a second apart: the session and the endpoint round it differently.
 function near(a, b) {
-  if (a === null || a === undefined || b === null || b === undefined) {
-    return (a ?? null) === (b ?? null);
-  }
   return Math.abs(a - b) <= 5;
+}
+
+// A window is known by its reset time, which does not move while the window runs.
+function running(w, now) {
+  return Boolean(w && typeof w === "object" && typeof w.resets_at === "number" && w.resets_at > now);
+}
+
+// At least one window runs on both sides, and every window that does resets at the same time.
+function sameWindows(a, b, now) {
+  const shared = ["five_hour", "seven_day"].filter((k) => running(a && a[k], now) && running(b && b[k], now));
+  return shared.length > 0 && shared.every((k) => near(a[k].resets_at, b[k].resets_at));
 }
 
 // A fingerprint of the session's numbers. Percentages are floored: only whole ones
@@ -93,26 +101,30 @@ function signature(lim) {
   return `${value(five.resets_at)}|${value(five.used_percentage)}|${value(seven.resets_at)}|${value(seven.used_percentage)}`;
 }
 
-// The session only reports the active account's limits, and right after a switch
-// it keeps giving the PREVIOUS account's numbers for a while. Such leftovers are told
-// apart by what is already known about the previous account: the same numbers, or the
-// same two reset times (its last numbers may have gone unrecorded, but windows do not move).
+// The session only reports the active account's limits, and after a switch it keeps
+// showing the numbers of the account it last got a response for, which can be several
+// switches back; another open session can show still older numbers of that account.
+// Such leftovers are told apart by what the other accounts are known to have: the
+// numbers the previous account last showed, or a window of any other account (its last
+// numbers may have gone unrecorded, but its windows do not move). A window that has
+// reset since tells nothing either way. Reset times are rounded (minutes for 5h, the
+// hour for 7d), so two accounts started close together can coincide; the new account's
+// numbers then stay unrecorded until the windows part, and the row shows the endpoint's
+// numbers meanwhile. Same rule as upstream 9603b09.
+// The previous account is the one a switch left, or the one the last status line saw
+// active: a /login by hand is a switch too.
 function observe({ active, lim, rl, now }) {
   if (!active || !lim || typeof lim !== "object") {
     return { status: "none", entry: null };
   }
   const sig = signature(lim);
   const prevs = [rl.switch && rl.switch.from, rl.lastActive].filter((id) => id && id !== active);
-  for (const prevId of new Set(prevs)) {
-    const prev = rl.accounts[prevId] || {};
-    const sameSig = sig === (prev.lastSig || "");
-    const sameWindows =
-      (prev.five_hour != null || prev.seven_day != null) &&
-      near(lim.five_hour ? lim.five_hour.resets_at ?? null : null, prev.five_hour ? prev.five_hour.resets_at ?? null : null) &&
-      near(lim.seven_day ? lim.seven_day.resets_at ?? null : null, prev.seven_day ? prev.seven_day.resets_at ?? null : null);
-    if (sameSig || sameWindows) {
-      return { status: "stale", entry: null };
-    }
+  const previousNumbers = prevs.some((id) => sig === ((rl.accounts[id] || {}).lastSig || ""));
+  const otherWindows = Object.entries(rl.accounts).some(
+    ([id, known]) => id !== active && sameWindows(lim, known, now)
+  );
+  if (previousNumbers || otherWindows) {
+    return { status: "stale", entry: null };
   }
   if ((rl.accounts[active] && rl.accounts[active].lastSig) === sig) {
     return { status: "live", entry: null };
