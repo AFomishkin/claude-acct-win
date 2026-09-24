@@ -66,7 +66,11 @@ is handed to a session at startup and cannot be changed while it runs. In older 
 
 For each account:
 
-1. `/login` in Claude Code.
+1. `/login` in Claude Code. The sign-in page does not open in the default browser, which is
+   usually signed in to some other account: its link goes to the clipboard. Paste it into the
+   browser or profile of the account you are adding (or a private window); the sign-in
+   finishes by itself, no code to paste back. Without the link handler (`--no-clicks`) the
+   browser opens as usual.
 2. Click **＋ save** in the status line (or run `claude-acct save`).
 
 > **Never use `/logout` to switch.** It revokes the login on Anthropic's side, and the
@@ -103,6 +107,11 @@ claude-acct doctor
 - **Clicks.** The status line prints `http://claude-acct.localhost/…` links as OSC 8. Claude
   Code opens a clicked link with `$BROWSER`, which points to `claude-acct-opener.exe`: it hands our
   links to `claude-acct open-url` and every other link to wherever it went before.
+- **Sign-in link.** `/login` opens its link with `$BROWSER` too, so the same handler catches it:
+  an `…/oauth/authorize` link of Claude's own sign-in hosts whose `redirect_uri` is Claude Code's
+  listener on `localhost` goes to the clipboard. The link `/login` prints after a few seconds
+  returns to `platform.claude.com` with a code to paste back; it is left alone, so clicking it
+  still opens the browser. Sign-in links of MCP servers are left alone too.
   A scheme of our own (`claude-acct://`) is not an option: on click Claude Code only lets through
   links from its allowlist of schemes (`http`, `https`, `vscode`, `cursor`, `zed`, …).
 - **Redraws.** Claude Code re-runs the status line command the moment it changes in

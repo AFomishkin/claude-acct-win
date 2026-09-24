@@ -22,6 +22,9 @@ const USAGE = `Usage: node install.js [--no-clicks] [--dry-run]
                claude-acct use; env.BROWSER is left alone
   --dry-run    show what would be done, without changing anything`;
 
+// The handler puts the sign-in link on the clipboard, hence WinForms.
+const OPENER_CSC_ARGS = ["-nologo", "-r:System.Windows.Forms.dll"];
+
 function cscPath() {
   const root = process.env.WINDIR || "C:\\Windows";
   const candidates = [
@@ -55,7 +58,7 @@ function buildStaging(staging, wantClicks) {
   }
   const exe = path.join(staging, "opener", "claude-acct-opener.exe");
   try {
-    execFileSync(csc, ["-nologo", "-target:winexe", `-out:${exe}`, path.join(staging, "opener", "Opener.cs")], {
+    execFileSync(csc, [...OPENER_CSC_ARGS, "-target:winexe", `-out:${exe}`, path.join(staging, "opener", "Opener.cs")], {
       stdio: "pipe",
     });
   } catch (e) {
@@ -211,6 +214,9 @@ function main(argv) {
       "In Claude Code:",
       "  1. Clicking needs fullscreen rendering: run /tui fullscreen if it is not on.",
       "  2. For each of your accounts: /login, then click \"＋ save\" in the status line (or run claude-acct save).",
+      ...(openerPath
+        ? ["     /login puts its sign-in link on the clipboard: paste it into the browser signed in to that account."]
+        : []),
       "  3. Alt+click an account in the status line to switch to it. Ctrl+click switches too, but Windows Terminal\n     also opens the link itself as an empty browser tab — hence Alt.",
       "  Do not use /logout to switch: it revokes the login, and the saved copy stops working.",
       "",
@@ -235,4 +241,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main, cscPath, buildStaging };
+module.exports = { main, cscPath, buildStaging, OPENER_CSC_ARGS };
